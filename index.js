@@ -1,6 +1,9 @@
 
 const { chromium } = require("playwright");
 
+const minWithdrawAmount = 1000
+const maxWithdrawAmount = 2000
+
 const getWithdrawDetails = async (websiteA) => {
     const accountNumber = await websiteA.locator(
         'p:text("Account Number :-")'
@@ -90,44 +93,57 @@ const createPayment = async (websiteB) => {
 
     const websiteA = pages[0];
     const websiteB = pages[1];
+    await websiteA.bringToFront();
+    await websiteB.bringToFront();
 
 
+
+    let utr;
+    const transactionTable =
+        websiteB.locator("table").filter({
+            hasText: "TID"
+        });
+
+    utr = await transactionTable
+        .locator("tbody tr")
+        .first()
+        .locator("td")
+        .nth(0)
+        .textContent();
+
+    const onlyNumbers = utr.replace(/\D/g, "");
+
+    console.log(onlyNumbers);
+
+    await websiteA.bringToFront()
+    if (!utr) {
+        console.log(utr);
+        process.exit(1)
+    }
+
+    // // apporve the withdraw with utr
+    // await websiteA.locator(".btn-close").first().click()
+
+    await websiteA.getByTitle("Approve").nth(0).click()
+    await websiteB.waitForTimeout(3000);
+
+    await websiteA.locator(
+        'label:text("UTR Number")'
+    ).locator('xpath=following-sibling::input[1]').fill(onlyNumbers)
+
+    // await websiteA.getByText("Approve").first().click()
+
+    // await websiteA.waitForTimeout(4000)
+
+
+    process.exit(1)
     try {
 
         await websiteA.bringToFront();
 
-        // for (let i = 0; i <= 50; i++) {
-
-
-
-        // // while (true) {
-
-
-
-        //     const count = await websiteA.locator(".details-notes-cmn-img").count();
-
-        //     if (count === 0) {
-        //         console.log("All withdrawals completed");
-        //         break;
-        //     }
-
-        //     await websiteA.locator(".details-notes-cmn-img").nth(i).click();
-
-        //     // get first account withdraw details.
-        //     const { accountNumber, ifsc, name, amount } = await getWithdrawDetails(websiteA);
-        //     console.log("account details : ", accountNumber, ifsc, name, amount);
-
-        //     await websiteA.waitForTimeout(3000)
-
-        //     await websiteA.locator(".btn-close").first().click()
-
-        // }
-
-
         let rowIndex = 0;
 
         while (true) {
-
 
             const rows = websiteA.locator(".details-notes-cmn-img");
 
@@ -145,33 +161,219 @@ const createPayment = async (websiteB) => {
             // const { accountNumber, ifsc, name, amount } = await getWithdrawDetails(websiteA);
             // console.log("account details : ", accountNumber, ifsc, name, amount);
 
+            //    const accountNumber = "5750838958";
+            // const ifsc = "KKBK0000173";
+            // const name = "Aditya Rawat";
+            // const amount = "100";
+
+
+
             await rows.nth(rowIndex).click();
             const { accountNumber, ifsc, name, amount } = await getWithdrawDetails(websiteA);
             console.log("account details :", accountNumber, ifsc, name, amount, rowIndex);
 
-            if (amount < 1000 || amount > 10000) {
+            // const accountNumber = "5750838958";
+            // const ifsc = "KKBK0000173";
+            // const name = "Aditya Rawat";
+            // const amount = "100";
+
+            if (amount < minWithdrawAmount || amount > maxWithdrawAmount) {
                 console.log("Skipping");
                 await websiteA.locator(".btn-close").first().click()
                 rowIndex++;
                 continue;
             }
 
+
+            // dummmy account details comment the real one 
+
+
+            // switch to k1 
+            await websiteB.bringToFront();
+
+            // check if the beneficiary already exist or not 
+            const isAccountExist = async () => {
+
+                const searchInput = websiteB.locator("#txtSearchF");
+                await searchInput.click();
+
+                await searchInput.clear(); // Clear previous search
+
+                await searchInput.pressSequentially(
+                    accountNumber,
+                    { delay: 50 }
+                );
+
+                // Give search time to load results
+                await websiteB.waitForTimeout(2000);
+                const impsButton = websiteB.getByRole("button", {
+                    name: "IMPS"
+                });
+
+                const exists = await impsButton.count();
+
+                console.log("IMPS count:", exists);
+
+                if (exists === 0) {
+                    return false;
+                }
+
+                return true;
+            };
+
+            let beneficiaryExists = await isAccountExist();
+
+            // add beneficiary if not exist
+            if (!beneficiaryExists) {
+                console.log("Beneficiary not found");
+
+                await websiteB.getByText("Add New").click();
+
+                await websiteB
+                    .locator("#ContentPlaceHolder1_txtAddBAccountNo")
+                    .fill(accountNumber);
+
+                await websiteB
+                    .locator("#ContentPlaceHolder1_txtAddBIFSC")
+                    .fill(ifsc);
+
+                await websiteB
+                    .locator("#txtAddBName")
+                    .fill(name);
+
+                // api request to add account
+                const createAccountResponse = websiteB.waitForResponse(res =>
+                    res.url().includes("/Member/SafeDMT.aspx") &&
+                    res.status() === 200
+                );
+
+                await websiteB
+                    .locator("#ContentPlaceHolder1_btnAddBeneficiary")
+                    .click();
+
+                await createAccountResponse; // move to next task only when account added. 
+
+                await websiteB.locator(".ajs-ok").click();
+                console.log("Account added");
+
+                await websiteB.waitForTimeout(3000);
+
+                beneficiaryExists = await isAccountExist();
+            }
+
+
+            if (beneficiaryExists) {
+                console.log("Beneficiary exists");
+
+                console.log(amount);
+
+                // await createPayment();
+
+                // const amountInput =  websiteB.locator("#txtAmount");
+                // await amountInput.click();
+                // await amountInput.clear()
+                // await amountInput.fill(amount); 
+
+                // await websiteB
+                //     .ge("#txtAmount")
+                //     .first()
+                //     .fill(amount); // use your amount variable
+
+                const row = websiteB
+                    .getByRole("button", { name: "IMPS" })
+                    .locator("xpath=ancestor::tr");
+
+                await row
+                    .locator("#txtAmount")
+                    .fill(amount);
+
+                await websiteB
+                    .getByRole("button", {
+                        name: "IMPS"
+                    })
+                    .click();
+
+
+                try {
+
+                    await websiteB
+                        .locator("#ContentPlaceHolder1_txtTPin")
+                        .first()
+                        .fill("6014");
+
+
+                    // const confrimWithdrawResponse = websiteB.waitForResponse(res =>
+                    //     res.url().includes("/Member/SafeDMT.aspx") &&
+                    //     res.status() === 200
+                    // );
+
+                    await websiteB.getByText("CONFIRM").click()
+
+                    // await confrimWithdrawResponse; // move to next task when payment done. 
+
+                    // const invalidPinMessage = websiteB.getByText(
+                    //     "Please enter right Login Pin"
+                    // );
+                    // if (await invalidPinMessage.isVisible().catch(() => false)) {
+                    //     console.log("Invalid MPIN");
+                    //     process.exit(1);
+                    // }
+                    console.log("payment successfull");
+
+                    const transactionTable =
+                        websiteB.locator("table").filter({
+                            hasText: "TID"
+                        });
+                    utr = await transactionTable
+                        .locator("tbody tr")
+                        .first()
+                        .locator("td")
+                        .nth(0)
+                        .textContent();
+
+                    console.log(utr)
+                    // await websiteB.getByText("Back").click()
+
+                } catch (error) {
+                    process.exit(1);
+
+                }
+
+            } else {
+                console.log("Beneficiary still not found after adding");
+            }
+
+            // submit utr 
+
+            await websiteA.bringToFront()
+            if (!utr) {
+                console.log(utr);
+                process.exit(1)
+            }
+
+            // // apporve the withdraw with utr
             await websiteA.locator(".btn-close").first().click()
 
             await websiteA.getByTitle("Approve").nth(rowIndex).click()
             await websiteB.waitForTimeout(3000);
 
-            // submit the utr number
+            // // submit the utr number
             await websiteA.locator(
                 'label:text("UTR Number")'
-            ).locator('xpath=following-sibling::input[1]').fill("1234567890")
+            ).locator('xpath=following-sibling::input[1]').fill(utr)
 
-            // click on the submit button
+            await websiteA.getByText("Approve").first().click()
 
-            // cancel temp
-            await websiteA.getByText("Cancel").first().click()
+            await websiteA.waitForTimeout(4000)
 
-            rowIndex++
+            // // click on the submit button
+
+            // // cancel temp
+            // // await websiteA.getByText("Cancel").first().click()
+            // console.log("done");
+
+            // process.exit(1);
+
 
         }
 
@@ -184,124 +386,3 @@ const createPayment = async (websiteB) => {
 
 
 
-//    // acccount details validation.
-
-
-//             // const accountNumber = "5750838958";
-//             // const ifsc = "KKBK0000173";
-//             // const name = "Aditya Rawat";
-//             // const amount = "1";
-
-//             // switch to k1 
-//             await websiteB.bringToFront();
-
-//             const isAccountExist = async () => {
-
-//                 const searchInput = websiteB.locator("#txtSearchF");
-
-//                 await searchInput.click();
-
-//                 // Clear previous search
-//                 await searchInput.clear();
-
-//                 await searchInput.pressSequentially(
-//                     accountNumber,
-//                     { delay: 50 }
-//                 );
-
-//                 // // Give search time to load results
-//                 // await websiteB.waitForTimeout(2000);
-
-//                 // const impsButton = websiteB.getByRole("button", {
-//                 //     name: "IMPS"
-//                 // });
-//                 const impsButton = websiteB.getByRole("button", { name: "IMPS" });
-//                 const exists = await impsButton.count();
-
-//                 return exists > 0;
-//             };
-
-//             let beneficiaryExists = await isAccountExist();
-
-//             if (!beneficiaryExists) {
-//                 console.log("Beneficiary not found");
-
-//                 // await createBeneficiary() // create beneficiary or create user account
-
-//                 await websiteB.getByText("Add New").click();
-
-//                 await websiteB
-//                     .locator("#ContentPlaceHolder1_txtAddBAccountNo")
-//                     .fill(accountNumber);
-
-//                 await websiteB
-//                     .locator("#ContentPlaceHolder1_txtAddBIFSC")
-//                     .fill(ifsc);
-
-//                 await websiteB
-//                     .locator("#txtAddBName")
-//                     .fill(name);
-
-//                 await websiteB
-//                     .locator("#ContentPlaceHolder1_btnAddBeneficiary")
-//                     .click();
-
-//                 // account details validation 
-
-//                 await websiteB.locator(".ajs-ok").click();
-
-
-//                 console.log("Account added");
-
-//                 // Wait for beneficiary creation
-//                 await websiteB.waitForTimeout(3000);
-
-//                 // Search again
-//                 beneficiaryExists = await isAccountExist();
-//             }
-
-
-//             if (beneficiaryExists) {
-//                 console.log("Beneficiary exists");
-//                 // await createPayment();
-
-//                 // const amountInput =  websiteB.locator("#txtAmount");
-//                 // await amountInput.click();
-//                 // await amountInput.clear()
-//                 // await amountInput.fill(amount); 
-
-//                 await websiteB
-//                     .locator("#txtAmount")
-//                     .first()
-//                     .fill(amount); // use your amount variable
-
-//                 await websiteB
-//                     .getByRole("button", {
-//                         name: "IMPS"
-//                     })
-//                     .click();
-
-//                 await websiteB.locator("#ContentPlaceHolder1_txtTPin").first().fill("6060"); // enter mpin
-
-
-//                 await websiteB.getByText("CONFIRM").click()
-//             } else {
-//                 console.log("Beneficiary still not found after adding");
-//             }
-
-//             // submit utr 
-
-//             console.log("payment successfull");
-//             await websiteA.bringToFront()
-
-//             await websiteA.locator(".btn-close").first().click()
-
-//             await websiteA.getByTitle("Approve").first().click()
-//             await websiteB.waitForTimeout(3000);
-
-
-//             const utrInput = websiteB.locator(
-//                 '//label[contains(text(),"UTR Number")]/following::input[1]'
-//             );
-
-//             await utrInput.fill("1234567890");

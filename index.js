@@ -2,7 +2,7 @@
 const { chromium } = require("playwright");
 
 const minWithdrawAmount = 1000
-const maxWithdrawAmount = 2000
+const maxWithdrawAmount = 4000
 
 const getWithdrawDetails = async (websiteA) => {
     const accountNumber = await websiteA.locator(
@@ -93,50 +93,52 @@ const createPayment = async (websiteB) => {
 
     const websiteA = pages[0];
     const websiteB = pages[1];
-    await websiteA.bringToFront();
-    await websiteB.bringToFront();
 
-
+    // end process is approved trasaction open
+    if ( await websiteA.getByText("Approved Amount").isVisible() .catch(() => false)) {
+        console.log(  "Approved Amount found");
+        process.exit(1);
+    }
+    
 
     let utr;
-    const transactionTable =
-        websiteB.locator("table").filter({
-            hasText: "TID"
-        });
+    
+    // const transactionTable =
+    //     websiteB.locator("table").filter({
+    //         hasText: "TID"
+    //     });
 
-    utr = await transactionTable
-        .locator("tbody tr")
-        .first()
-        .locator("td")
-        .nth(0)
-        .textContent();
+    // utr = await transactionTable
+    //     .locator("tbody tr")
+    //     .first()
+    //     .locator("td")
+    //     .nth(0)
+    //     .textContent();
 
-    const onlyNumbers = utr.replace(/\D/g, "");
+    // const onlyNumbers = utr.replace(/\D/g, "");
 
-    console.log(onlyNumbers);
+    // console.log(onlyNumbers);
 
-    await websiteA.bringToFront()
-    if (!utr) {
-        console.log(utr);
-        process.exit(1)
-    }
+    // await websiteA.bringToFront()
+    // if (!utr) {
+    //     console.log(utr);
+    //     process.exit(1)
+    // }
 
-    // // apporve the withdraw with utr
-    // await websiteA.locator(".btn-close").first().click()
+    // // // apporve the withdraw with utr
+    // // await websiteA.locator(".btn-close").first().click()
 
-    await websiteA.getByTitle("Approve").nth(0).click()
-    await websiteB.waitForTimeout(3000);
+    // await websiteA.getByTitle("Approve").nth(0).click()
+    // await websiteB.waitForTimeout(3000);
 
-    await websiteA.locator(
-        'label:text("UTR Number")'
-    ).locator('xpath=following-sibling::input[1]').fill(onlyNumbers)
+    // await websiteA.locator(
+    //     'label:text("UTR Number")'
+    // ).locator('xpath=following-sibling::input[1]').fill(onlyNumbers)
 
     // await websiteA.getByText("Approve").first().click()
 
     // await websiteA.waitForTimeout(4000)
 
-
-    process.exit(1)
     try {
 
         await websiteA.bringToFront();
@@ -154,19 +156,6 @@ const createPayment = async (websiteB) => {
                 process.exit(1);
                 break;
             }
-
-            // await websiteA.locator(".details-notes-cmn-img").first().click();
-
-            // // get first account withdraw details.
-            // const { accountNumber, ifsc, name, amount } = await getWithdrawDetails(websiteA);
-            // console.log("account details : ", accountNumber, ifsc, name, amount);
-
-            //    const accountNumber = "5750838958";
-            // const ifsc = "KKBK0000173";
-            // const name = "Aditya Rawat";
-            // const amount = "100";
-
-
 
             await rows.nth(rowIndex).click();
             const { accountNumber, ifsc, name, amount } = await getWithdrawDetails(websiteA);
@@ -301,15 +290,23 @@ const createPayment = async (websiteB) => {
                         .first()
                         .fill("6014");
 
+                    try {
 
-                    // const confrimWithdrawResponse = websiteB.waitForResponse(res =>
-                    //     res.url().includes("/Member/SafeDMT.aspx") &&
-                    //     res.status() === 200
-                    // );
+                        console.log("before payment successfull");
+                        const confrimWithdrawResponse = websiteB.waitForResponse(res =>
+                            res.url().includes("/Member/SafeDMT.aspx") &&
+                            res.status() === 200
+                        );
 
-                    await websiteB.getByText("CONFIRM").click()
+                        await websiteB.getByText("CONFIRM").click()
 
-                    // await confrimWithdrawResponse; // move to next task when payment done. 
+                        await confrimWithdrawResponse; // move to next task when payment done. 
+                        console.log("after payment successfull");
+                    } catch (error) {
+                        console.log("payment failed ", error);
+                        process.exit(1);
+                    }
+
 
                     // const invalidPinMessage = websiteB.getByText(
                     //     "Please enter right Login Pin"
@@ -324,19 +321,20 @@ const createPayment = async (websiteB) => {
                         websiteB.locator("table").filter({
                             hasText: "TID"
                         });
-                    utr = await transactionTable
+
+                    const utrWithString = await transactionTable
                         .locator("tbody tr")
                         .first()
                         .locator("td")
                         .nth(0)
                         .textContent();
 
-                    console.log(utr)
-                    // await websiteB.getByText("Back").click()
+                    utr = utrWithString.replace(/\D/g, "");
 
+                    console.log(utr);
+                    await websiteB.getByText("Back").click()
                 } catch (error) {
                     process.exit(1);
-
                 }
 
             } else {
@@ -347,24 +345,62 @@ const createPayment = async (websiteB) => {
 
             await websiteA.bringToFront()
             if (!utr) {
-                console.log(utr);
+                console.log("no utr found", utr);
                 process.exit(1)
             }
 
             // // apporve the withdraw with utr
             await websiteA.locator(".btn-close").first().click()
 
-            await websiteA.getByTitle("Approve").nth(rowIndex).click()
+            try {
+                console.log("before modal open");
+
+                // const modalOpenResponse = websiteB.waitForResponse(res =>
+                //     res.url().includes("/transaction/transaction-client-details") &&
+                //     res.status() === 200
+                // );
+                await websiteA.getByTitle("Approve").nth(rowIndex).click()
+
+                // await modalOpenResponse()
+                console.log("log after modal open");
+            } catch (error) {
+                console.log("can not open modal", error);
+                process.exit(1)
+
+            }
+
             await websiteB.waitForTimeout(3000);
 
-            // // submit the utr number
             await websiteA.locator(
                 'label:text("UTR Number")'
             ).locator('xpath=following-sibling::input[1]').fill(utr)
 
-            await websiteA.getByText("Approve").first().click()
+            try {
+                // console.log("before withdraw approve");
+                // const paymentApproveResponse = websiteB.waitForResponse(res =>
+                //     res.url().includes("/transaction/update-transaction-request-v2") &&
+                //     res.status() === 200
+                // );
+
+                await websiteA
+                    .locator(".accept-footer-btn")
+                    .locator("button")
+                    .nth(1)
+                    .click();
+                // await paymentApproveResponse();
+                console.log("after payment approve");
+
+
+            } catch (error) {
+                console.log("withdraw approve failed ", error);
+                console.log(process.exit(1));
+
+            }
+
 
             await websiteA.waitForTimeout(4000)
+            console.log("withdra complete ");
+
 
             // // click on the submit button
 
